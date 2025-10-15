@@ -30,6 +30,7 @@ export default function SessionScreen() {
   const isHost = session?.hostId === user?.id;
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playbackCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTrackIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -75,10 +76,18 @@ export default function SessionScreen() {
 
     const broadcastPlayback = async () => {
       try {
-        const state = await SpotifyService.getPlaybackState();
-        const track = await SpotifyService.getCurrentlyPlaying();
+        // Use combined method to reduce API calls from 2 to 1
+        const { state, track } = await SpotifyService.getPlaybackStateAndTrack();
         
         if (state) {
+          // Detect track changes
+          const trackChanged = lastTrackIdRef.current !== state.trackId;
+          
+          if (trackChanged) {
+            console.log('Track changed detected!', state.trackId);
+            lastTrackIdRef.current = state.trackId || null;
+          }
+          
           await FirebaseService.updatePlaybackState(id, state, track || undefined);
         }
       } catch (error) {
@@ -89,8 +98,8 @@ export default function SessionScreen() {
     // Broadcast immediately
     broadcastPlayback();
 
-    // Then broadcast every 2 seconds
-    syncIntervalRef.current = setInterval(broadcastPlayback, 2000);
+    // Then broadcast every 1 second (reduced from 2 seconds for faster updates)
+    syncIntervalRef.current = setInterval(broadcastPlayback, 1000);
 
     return () => {
       if (syncIntervalRef.current) {
@@ -110,19 +119,24 @@ export default function SessionScreen() {
         // Get current local playback
         const localState = await SpotifyService.getPlaybackState();
         
-        // Check if we need to sync
+        // Check if track changed - sync immediately if so
+        const trackChanged = localState?.trackId !== playbackState.trackId;
+        
+        if (trackChanged) {
+          console.log('Syncing to new track:', playbackState.trackId);
+          await SpotifyService.syncPlayback(playbackState, currentTrack || undefined);
+          return;
+        }
+        
+        // Check if we need to sync position
         const timeDiff = playbackState.timestamp ? Date.now() - playbackState.timestamp : 0;
         const expectedProgress = playbackState.progressMs + timeDiff;
         const progressDiff = localState 
           ? Math.abs(localState.progressMs - expectedProgress)
           : 5000;
 
-        // Sync if track is different or position is off by more than 3 seconds
-        if (
-          !localState ||
-          localState.trackId !== playbackState.trackId ||
-          progressDiff > 3000
-        ) {
+        // Sync if position is off by more than 2 seconds (reduced from 3)
+        if (!localState || progressDiff > 2000) {
           await SpotifyService.syncPlayback(
             {
               ...playbackState,
@@ -140,8 +154,8 @@ export default function SessionScreen() {
 
     syncToHost();
 
-    // Check and sync every 5 seconds
-    playbackCheckRef.current = setInterval(syncToHost, 5000);
+    // Check and sync every 2 seconds (reduced from 5 seconds for faster sync)
+    playbackCheckRef.current = setInterval(syncToHost, 2000);
 
     return () => {
       if (playbackCheckRef.current) {

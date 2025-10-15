@@ -211,6 +211,44 @@ export class SpotifyService {
     }
   }
 
+  // Combined method to get both playback state and track info in one call
+  static async getPlaybackStateAndTrack(): Promise<{ 
+    state: PlaybackState | null; 
+    track: SpotifyTrack | null;
+  }> {
+    try {
+      const data = await this.getCurrentPlayback();
+      
+      if (!data || !data.item) {
+        return { state: null, track: null };
+      }
+
+      const state: PlaybackState = {
+        isPlaying: data.is_playing,
+        progressMs: data.progress_ms,
+        timestamp: Date.now(),
+        trackId: data.item.id,
+        trackUri: data.item.uri,
+        duration: data.item.duration_ms,
+      };
+
+      const track: SpotifyTrack = {
+        id: data.item.id,
+        name: data.item.name,
+        artist: data.item.artists.map((a: any) => a.name).join(', '),
+        album: data.item.album.name,
+        albumArt: data.item.album.images[0]?.url,
+        uri: data.item.uri,
+        duration: data.item.duration_ms,
+      };
+
+      return { state, track };
+    } catch (error) {
+      console.error('Error getting playback state and track:', error);
+      return { state: null, track: null };
+    }
+  }
+
   // Playback Control
   static async play(trackUri?: string, positionMs?: number) {
     const body: any = {};
