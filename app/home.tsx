@@ -164,7 +164,7 @@ export default function HomeScreen() {
         <FlatList
           data={sessions}
           renderItem={renderSession}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => item?.id || `session-${index}`}
           contentContainerStyle={styles.sessionList}
         />
       )}

@@ -386,7 +386,7 @@ export default function SessionScreen() {
           <FlatList
             data={participants}
             renderItem={renderParticipant}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => item?.id || `participant-${index}`}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.participantsList}
