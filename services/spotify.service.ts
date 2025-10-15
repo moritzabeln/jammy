@@ -143,8 +143,6 @@ export class SpotifyService {
     }
 
     console.log(`Making Spotify API request to ${endpoint}`);
-    console.log('Access token exists:', !!this.accessToken);
-    console.log('Access token (first 20 chars):', this.accessToken?.substring(0, 20));
 
     const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
       method,

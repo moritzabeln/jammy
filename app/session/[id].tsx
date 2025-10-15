@@ -302,14 +302,6 @@ export default function SessionScreen() {
     );
   }
 
-  console.log('🎨 Rendering session screen:', {
-    hasCurrentTrack: !!currentTrack,
-    currentTrackName: currentTrack?.name,
-    hasPlaybackState: !!playbackState,
-    isPlaying: playbackState?.isPlaying,
-    isHost,
-  });
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>

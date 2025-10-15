@@ -144,7 +144,6 @@ export class FirebaseService {
     }
 
     await update(sessionRef, update_data);
-    console.log('✅ Playback state updated successfully');
   }
 
   static subscribeToSession(
