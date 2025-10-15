@@ -1,0 +1,51 @@
+{
+  "name": "React Native + Expo Development",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "msjsdiag.vscode-react-native",
+        "mgmcdermott.vscode-language-babel",
+        "formulahendry.auto-rename-tag",
+        "dsznajder.es7-react-js-snippets"
+      ]
+    }
+  },
+
+  "postCreateCommand": "npm install -g eas-cli@latest",
+
+  "forwardPorts": [8081, 19000, 19001, 19002],
+
+  "portsAttributes": {
+    "8081": {
+      "label": "Metro Bundler",
+      "onAutoForward": "notify"
+    },
+    "19000": {
+      "label": "Expo DevTools",
+      "onAutoForward": "notify"
+    },
+    "19001": {
+      "label": "Expo Dev Server",
+      "onAutoForward": "notify"
+    },
+    "19002": {
+      "label": "Expo Dev Server (Alternative)",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "remoteEnv": {
+    "EXPO_DEVTOOLS_LISTEN_ADDRESS": "0.0.0.0"
+  }
+}
