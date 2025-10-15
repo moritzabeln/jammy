@@ -299,7 +299,13 @@ export class SpotifyService {
   // Sync playback to match another user's state
   static async syncPlayback(playbackState: PlaybackState, track?: SpotifyTrack) {
     try {
-      // If track is different, start playing the new track
+      // If we should be paused, just pause without playing first
+      if (!playbackState.isPlaying) {
+        await this.pause();
+        return;
+      }
+
+      // If we should be playing, start the track at the correct position
       if (track && track.uri) {
         await this.play(track.uri, playbackState.progressMs);
       } else if (playbackState.trackUri) {
@@ -307,11 +313,6 @@ export class SpotifyService {
       } else {
         // Just seek to position if same track
         await this.seek(playbackState.progressMs);
-      }
-
-      // Match play/pause state
-      if (!playbackState.isPlaying) {
-        await this.pause();
       }
     } catch (error) {
       console.error('Error syncing playback:', error);
