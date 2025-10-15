@@ -6,13 +6,33 @@ export class FirebaseService {
   // User Management
   static async createOrUpdateUser(user: User): Promise<void> {
     const userRef = ref(database, `users/${user.id}`);
-    await set(userRef, {
-      displayName: user.displayName,
-      email: user.email,
-      profileImage: user.profileImage,
-      spotifyId: user.spotifyId,
-      lastSeen: Date.now(),
-    });
+    
+    // Check if user exists first
+    const snapshot = await get(userRef);
+    
+    if (snapshot.exists()) {
+      // User exists - only update specific fields, preserve friends and other data
+      console.log('📝 Updating existing user:', user.id);
+      await update(userRef, {
+        displayName: user.displayName,
+        email: user.email,
+        profileImage: user.profileImage,
+        spotifyId: user.spotifyId,
+        lastSeen: Date.now(),
+      });
+    } else {
+      // New user - create with initial data
+      console.log('✨ Creating new user:', user.id);
+      await set(userRef, {
+        displayName: user.displayName,
+        email: user.email,
+        profileImage: user.profileImage,
+        spotifyId: user.spotifyId,
+        lastSeen: Date.now(),
+        isOnline: false,
+        friends: {},
+      });
+    }
   }
 
   static async getUser(userId: string): Promise<User | null> {

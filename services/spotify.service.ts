@@ -1,12 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 import { PlaybackState, SpotifyTrack } from '../types';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const SPOTIFY_CLIENT_ID = process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID!;
-const SPOTIFY_REDIRECT_URI = process.env.EXPO_PUBLIC_SPOTIFY_REDIRECT_URI || makeRedirectUri({ scheme: 'jammy' });
+
+// Platform-specific redirect URIs
+const getRedirectUri = () => {
+  if (Platform.OS === 'web') {
+    // Use HTTPS redirect for web
+    return process.env.EXPO_PUBLIC_SPOTIFY_REDIRECT_URI_WEB || 'https://localhost:8081';
+  } else {
+    // Use exp:// or custom scheme for mobile
+    return process.env.EXPO_PUBLIC_SPOTIFY_REDIRECT_URI_MOBILE || makeRedirectUri({ scheme: 'jammy' });
+  }
+};
+
+const SPOTIFY_REDIRECT_URI = getRedirectUri();
+
+console.log('🌐 Platform:', Platform.OS);
+console.log('🔗 Redirect URI:', SPOTIFY_REDIRECT_URI);
 
 // Spotify API endpoints
 const discovery = {
