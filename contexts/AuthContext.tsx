@@ -1,4 +1,6 @@
+import { signOut as firebaseSignOut, signInAnonymously } from 'firebase/auth';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { auth } from '../config/firebase';
 import { FirebaseService } from '../services/firebase.service';
 import { SpotifyService } from '../services/spotify.service';
 import { User } from '../types';
@@ -34,6 +36,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const loadUser = async () => {
     try {
+      // Sign in to Firebase anonymously first
+      await signInAnonymously(auth);
+      
       const hasTokens = await SpotifyService.loadTokens();
       
       if (hasTokens) {
@@ -62,6 +67,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signIn = async (accessToken: string, refreshToken: string, expiresIn: number) => {
     try {
+      // Sign in to Firebase anonymously first
+      await signInAnonymously(auth);
+      
       await SpotifyService.setTokens(accessToken, refreshToken, expiresIn);
       const spotifyUser = await SpotifyService.getCurrentUser();
       
@@ -89,6 +97,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await FirebaseService.updateUserPresence(user.id, false);
       }
       await SpotifyService.clearTokens();
+      await firebaseSignOut(auth);
       setUser(null);
     } catch (error) {
       console.error('Error signing out:', error);
