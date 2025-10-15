@@ -46,6 +46,42 @@ Your Expo project must have:
 - An `app.json` or `app.config.js` configuration file
 - All necessary Expo dependencies installed
 
+### GitHub Secrets
+
+The workflow uses GitHub secrets as environment variables to configure your Expo app during the build process. This allows you to securely store API keys and service URLs without exposing them in your code.
+
+**Setting up secrets:**
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Add the following secrets (adjust based on your project needs):
+
+   - `EXPO_PUBLIC_API_URL` - Your API endpoint URL
+   - `EXPO_PUBLIC_SPOTIFY_CLIENT_ID` - Spotify API client ID
+   - `EXPO_PUBLIC_BACKEND_URL` - Your backend service URL
+
+**How it works:**
+
+The workflow makes these secrets available as environment variables during the build:
+
+```yaml
+env:
+  EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+  EXPO_PUBLIC_SPOTIFY_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_SPOTIFY_CLIENT_ID }}
+  EXPO_PUBLIC_BACKEND_URL: ${{ secrets.EXPO_PUBLIC_BACKEND_URL }}
+```
+
+Your Expo app can access these variables using `process.env.EXPO_PUBLIC_*` (for Expo SDK 49+) or through your environment configuration.
+
+**Adding more secrets:**
+
+To add additional secrets to the workflow, edit `.github/workflows/build-apk.yml` and add them to the `env:` section following the same pattern:
+
+```yaml
+YOUR_SECRET_NAME: ${{ secrets.YOUR_SECRET_NAME }}
+```
+
 ## Output
 
 The APK will be located at: `android/app/build/outputs/apk/release/app-release.apk`
