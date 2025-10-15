@@ -1,4 +1,4 @@
-import { get, off, onValue, push, ref, remove, set, update } from 'firebase/database';
+import { get, off, onValue, push, ref, remove, serverTimestamp, set, update } from 'firebase/database';
 import { database } from '../config/firebase';
 import { Friend, ListeningSession, PlaybackState, SpotifyTrack, User } from '../types';
 
@@ -135,7 +135,10 @@ export class FirebaseService {
     const update_data: any = {
       playbackState: {
         ...playbackState,
-        timestamp: Date.now(),
+        // Use server timestamp to eliminate clock drift between devices
+        serverTimestamp: serverTimestamp(),
+        // Keep client timestamp for backwards compatibility and local reference
+        timestamp: playbackState.timestamp || Date.now(),
       },
     };
 

@@ -331,20 +331,40 @@ export class SpotifyService {
   // Sync playback to match another user's state
   static async syncPlayback(playbackState: PlaybackState, track?: SpotifyTrack) {
     try {
-      // If we should be paused, just pause without playing first
-      if (!playbackState.isPlaying) {
-        await this.pause();
-        return;
-      }
+      console.log('🔄 syncPlayback called:', {
+        hasTrack: !!track,
+        trackUri: track?.uri || playbackState.trackUri,
+        trackName: track?.name,
+        isPlaying: playbackState.isPlaying,
+        progressMs: playbackState.progressMs,
+      });
 
-      // If we should be playing, start the track at the correct position
+      // If there's a track URI, we need to load it (even if paused)
+      // This ensures the client has the correct track loaded
       if (track && track.uri) {
+        console.log('▶️ Playing track:', track.name, 'at', playbackState.progressMs, 'ms');
         await this.play(track.uri, playbackState.progressMs);
+        // If it should be paused, pause after loading
+        if (!playbackState.isPlaying) {
+          console.log('⏸️ Pausing after loading track');
+          await this.pause();
+        }
       } else if (playbackState.trackUri) {
+        console.log('▶️ Playing track URI:', playbackState.trackUri, 'at', playbackState.progressMs, 'ms');
         await this.play(playbackState.trackUri, playbackState.progressMs);
+        // If it should be paused, pause after loading
+        if (!playbackState.isPlaying) {
+          console.log('⏸️ Pausing after loading track');
+          await this.pause();
+        }
       } else {
-        // Just seek to position if same track
-        await this.seek(playbackState.progressMs);
+        // No track URI provided - just handle play/pause and seek
+        console.log('⚠️ No track URI - handling play/pause state only');
+        if (!playbackState.isPlaying) {
+          await this.pause();
+        } else {
+          await this.seek(playbackState.progressMs);
+        }
       }
     } catch (error) {
       console.error('Error syncing playback:', error);

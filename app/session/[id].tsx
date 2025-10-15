@@ -1,19 +1,26 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirebaseService } from '../../services/firebase.service';
 import { SpotifyService } from '../../services/spotify.service';
 import { ListeningSession, PlaybackState, SpotifyTrack, User } from '../../types';
+
+interface SyncMetrics {
+  networkDelay: number;
+  syncDrift: number;
+  lastSyncTime: number;
+  syncCount: number;
+}
 
 export default function SessionScreen() {
   const { user } = useAuth();
@@ -26,11 +33,13 @@ export default function SessionScreen() {
   const [participants, setParticipants] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncMetrics, setSyncMetrics] = useState<SyncMetrics | null>(null);
   
   const isHost = session?.hostId === user?.id;
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playbackCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTrackIdRef = useRef<string | null>(null);
+  const syncCountRef = useRef<number>(0);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -46,16 +55,30 @@ export default function SessionScreen() {
         return;
       }
 
+      // Add receivedAt timestamp for network delay calculation
+      const receivedAt = Date.now();
+      
       console.log('📥 Session update received:', {
         hasCurrentTrack: !!updatedSession.currentTrack,
         currentTrack: updatedSession.currentTrack,
         hasPlaybackState: !!updatedSession.playbackState,
         playbackState: updatedSession.playbackState,
+        receivedAt,
       });
 
       setSession(updatedSession);
       setCurrentTrack(updatedSession.currentTrack || null);
-      setPlaybackState(updatedSession.playbackState || null);
+      
+      // Add receivedAt timestamp to playback state for network delay compensation
+      if (updatedSession.playbackState) {
+        setPlaybackState({
+          ...updatedSession.playbackState,
+          receivedAt,
+        });
+      } else {
+        setPlaybackState(null);
+      }
+      
       setLoading(false);
 
       // Load participant details
@@ -138,21 +161,101 @@ export default function SessionScreen() {
         // Check if track changed - sync immediately if so
         const trackChanged = localState?.trackId !== playbackState.trackId;
         
+        console.log('🎵 Track comparison:', {
+          localTrackId: localState?.trackId,
+          hostTrackId: playbackState.trackId,
+          trackChanged,
+          hasCurrentTrack: !!currentTrack,
+          trackName: currentTrack?.name,
+        });
+        
         if (trackChanged) {
-          console.log('Syncing to new track:', playbackState.trackId);
+          console.log('🔄 Track changed! Syncing to new track:', {
+            trackId: playbackState.trackId,
+            trackName: currentTrack?.name,
+            isPlaying: playbackState.isPlaying,
+            progressMs: playbackState.progressMs,
+          });
           await SpotifyService.syncPlayback(playbackState, currentTrack || undefined);
           return;
         }
         
-        // Check if we need to sync position
-        const timeDiff = playbackState.timestamp ? Date.now() - playbackState.timestamp : 0;
-        const expectedProgress = playbackState.progressMs + timeDiff;
+        // Calculate expected progress with network delay compensation
+        let expectedProgress: number;
+        let networkDelay = 0;
+        
+        if (playbackState.serverTimestamp && playbackState.receivedAt) {
+          // Use server timestamp for accurate calculation
+          // Network delay = time when we received it - server timestamp
+          networkDelay = playbackState.receivedAt - playbackState.serverTimestamp;
+          
+          // Calculate how much time has passed since server sent the update
+          const timeSinceUpdate = Date.now() - playbackState.receivedAt;
+          
+          // Only add time if the track is playing! If paused, progress stays constant
+          if (playbackState.isPlaying) {
+            // Expected progress = original progress + time since update + network delay offset
+            // The network delay offset accounts for the fact that by the time we received
+            // the update, the host was already ahead by that amount
+            expectedProgress = playbackState.progressMs + timeSinceUpdate + networkDelay;
+          } else {
+            // Track is paused - expected progress doesn't change over time
+            expectedProgress = playbackState.progressMs;
+          }
+          
+          console.log('📊 Network delay compensation:', {
+            networkDelay: `${networkDelay}ms`,
+            timeSinceUpdate: `${timeSinceUpdate}ms`,
+            isPlaying: playbackState.isPlaying,
+            originalProgress: playbackState.progressMs,
+            expectedProgress,
+            networkDelayOffset: playbackState.isPlaying ? `+${networkDelay}ms` : 'N/A (paused)',
+          });
+        } else {
+          // Fallback to old method if serverTimestamp not available
+          const timeDiff = playbackState.timestamp ? Date.now() - playbackState.timestamp : 0;
+          expectedProgress = playbackState.isPlaying 
+            ? playbackState.progressMs + timeDiff
+            : playbackState.progressMs;
+        }
+        
         const progressDiff = localState 
           ? Math.abs(localState.progressMs - expectedProgress)
           : 5000;
 
-        // Sync if position is off by more than 2 seconds (reduced from 3)
-        if (!localState || progressDiff > 2000) {
+        // Check if play/pause state changed
+        const playStateChanged = localState && localState.isPlaying !== playbackState.isPlaying;
+
+        console.log('🎯 Sync check:', {
+          localProgress: localState?.progressMs,
+          expectedProgress,
+          progressDiff: `${progressDiff}ms`,
+          localIsPlaying: localState?.isPlaying,
+          hostIsPlaying: playbackState.isPlaying,
+          playStateChanged,
+          threshold: '1000ms',
+          willSync: !localState || progressDiff > 1000 || playStateChanged,
+        });
+
+        // Update sync metrics for monitoring
+        syncCountRef.current += 1;
+        setSyncMetrics({
+          networkDelay,
+          syncDrift: progressDiff,
+          lastSyncTime: Date.now(),
+          syncCount: syncCountRef.current,
+        });
+
+        // Sync if:
+        // 1. No local state available
+        // 2. Position is off by more than 1 second
+        // 3. Play/pause state changed
+        if (!localState || progressDiff > 1000 || playStateChanged) {
+          if (playStateChanged) {
+            console.log('⚡ Syncing playback - play/pause state changed');
+          } else {
+            console.log('⚡ Syncing playback - drift detected');
+          }
           await SpotifyService.syncPlayback(
             {
               ...playbackState,
@@ -286,10 +389,22 @@ export default function SessionScreen() {
   const getCurrentProgress = () => {
     if (!playbackState) return 0;
     
-    const timeDiff = playbackState.timestamp ? Date.now() - playbackState.timestamp : 0;
-    const currentProgress = playbackState.isPlaying 
-      ? playbackState.progressMs + timeDiff 
-      : playbackState.progressMs;
+    let currentProgress: number;
+    
+    // Use server timestamp if available for more accurate progress
+    if (playbackState.serverTimestamp && playbackState.receivedAt) {
+      // Calculate time since we received the update
+      const timeSinceUpdate = Date.now() - playbackState.receivedAt;
+      currentProgress = playbackState.isPlaying 
+        ? playbackState.progressMs + timeSinceUpdate 
+        : playbackState.progressMs;
+    } else {
+      // Fallback to old method
+      const timeDiff = playbackState.timestamp ? Date.now() - playbackState.timestamp : 0;
+      currentProgress = playbackState.isPlaying 
+        ? playbackState.progressMs + timeDiff 
+        : playbackState.progressMs;
+    }
     
     return Math.min(currentProgress, playbackState.duration || 0);
   };
@@ -312,6 +427,14 @@ export default function SessionScreen() {
           <View style={styles.syncIndicator}>
             <ActivityIndicator size="small" color="#1DB954" />
             <Text style={styles.syncText}>Syncing...</Text>
+          </View>
+        )}
+        {/* Debug: Sync metrics for non-host users */}
+        {!isHost && syncMetrics && (
+          <View style={styles.debugMetrics}>
+            <Text style={styles.debugText}>
+              🔍 Network: {syncMetrics.networkDelay}ms | Drift: {Math.round(syncMetrics.syncDrift)}ms
+            </Text>
           </View>
         )}
       </View>
@@ -459,6 +582,19 @@ const styles = StyleSheet.create({
   syncText: {
     color: '#1DB954',
     fontSize: 12,
+  },
+  debugMetrics: {
+    backgroundColor: 'rgba(29, 185, 84, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(29, 185, 84, 0.3)',
+  },
+  debugText: {
+    color: '#1DB954',
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
   content: {
     flex: 1,

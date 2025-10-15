@@ -31,6 +31,10 @@ export interface PlaybackState {
   trackId?: string;
   trackUri?: string;
   duration?: number;
+  // Server-side timestamp from Firebase (eliminates clock drift)
+  serverTimestamp?: number;
+  // Client timestamp when update was received (for network delay calculation)
+  receivedAt?: number;
 }
 
 export interface SpotifyTrack {
