@@ -1,20 +1,21 @@
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Pressable,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    Pressable,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { FirebaseService } from '../services/firebase.service';
+import { SpotifyService } from '../services/spotify.service';
 import { Friend } from '../types';
 
 export default function HomeScreen() {
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [friendCode, setFriendCode] = useState('');
   const [addingFriend, setAddingFriend] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const broadcastIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +47,44 @@ export default function HomeScreen() {
       setError(errorMessage);
       setLoading(false);
     }
+  }, [user]);
+
+  // Broadcast playback state to auto-session
+  useEffect(() => {
+    if (!user) return;
+
+    const broadcastPlayback = async () => {
+      try {
+        // Get user's auto-session ID from Firebase
+        const userData = await FirebaseService.getUser(user.id);
+        if (!userData?.autoSessionId) {
+          return;
+        }
+
+        // Get current playback state from Spotify
+        const { state, track } = await SpotifyService.getPlaybackStateAndTrack();
+        
+        if (state) {
+          console.log('🏠 Home broadcasting playback to auto-session:', userData.autoSessionId);
+          await FirebaseService.updatePlaybackState(userData.autoSessionId, state, track || undefined);
+        }
+      } catch {
+        // Silently fail - user might not be playing anything
+        console.debug('No active playback to broadcast');
+      }
+    };
+
+    // Broadcast immediately
+    broadcastPlayback();
+
+    // Then broadcast every 2 seconds
+    broadcastIntervalRef.current = setInterval(broadcastPlayback, 2000);
+
+    return () => {
+      if (broadcastIntervalRef.current) {
+        clearInterval(broadcastIntervalRef.current);
+      }
+    };
   }, [user]);
 
   const handleShareFriendLink = async () => {

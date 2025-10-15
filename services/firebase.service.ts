@@ -124,6 +124,14 @@ export class FirebaseService {
     currentTrack?: SpotifyTrack
   ): Promise<void> {
     const sessionRef = ref(database, `sessions/${sessionId}`);
+    
+    console.log('💾 Updating playback state:', {
+      sessionId,
+      hasTrack: !!currentTrack,
+      trackName: currentTrack?.name,
+      isPlaying: playbackState.isPlaying,
+    });
+    
     const update_data: any = {
       playbackState: {
         ...playbackState,
@@ -136,6 +144,7 @@ export class FirebaseService {
     }
 
     await update(sessionRef, update_data);
+    console.log('✅ Playback state updated successfully');
   }
 
   static subscribeToSession(

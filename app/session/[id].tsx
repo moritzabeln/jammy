@@ -46,6 +46,13 @@ export default function SessionScreen() {
         return;
       }
 
+      console.log('📥 Session update received:', {
+        hasCurrentTrack: !!updatedSession.currentTrack,
+        currentTrack: updatedSession.currentTrack,
+        hasPlaybackState: !!updatedSession.playbackState,
+        playbackState: updatedSession.playbackState,
+      });
+
       setSession(updatedSession);
       setCurrentTrack(updatedSession.currentTrack || null);
       setPlaybackState(updatedSession.playbackState || null);
@@ -79,19 +86,28 @@ export default function SessionScreen() {
         // Use combined method to reduce API calls from 2 to 1
         const { state, track } = await SpotifyService.getPlaybackStateAndTrack();
         
+        console.log('🎵 Host broadcasting:', {
+          hasState: !!state,
+          hasTrack: !!track,
+          trackName: track?.name,
+          isPlaying: state?.isPlaying,
+        });
+        
         if (state) {
           // Detect track changes
           const trackChanged = lastTrackIdRef.current !== state.trackId;
           
           if (trackChanged) {
-            console.log('Track changed detected!', state.trackId);
+            console.log('🔄 Track changed detected!', state.trackId);
             lastTrackIdRef.current = state.trackId || null;
           }
           
           await FirebaseService.updatePlaybackState(id, state, track || undefined);
+        } else {
+          console.log('⚠️ No playback state available from Spotify');
         }
       } catch (error) {
-        console.error('Error broadcasting playback:', error);
+        console.error('❌ Error broadcasting playback:', error);
       }
     };
 
@@ -285,6 +301,14 @@ export default function SessionScreen() {
       </View>
     );
   }
+
+  console.log('🎨 Rendering session screen:', {
+    hasCurrentTrack: !!currentTrack,
+    currentTrackName: currentTrack?.name,
+    hasPlaybackState: !!playbackState,
+    isPlaying: playbackState?.isPlaying,
+    isHost,
+  });
 
   return (
     <View style={styles.container}>
