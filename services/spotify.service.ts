@@ -159,6 +159,21 @@ export class SpotifyService {
 
     if (!response.ok) {
       const errorText = await response.text();
+      
+      // Handle specific Spotify API restrictions gracefully
+      if (response.status === 403) {
+        try {
+          const errorData = JSON.parse(errorText);
+          // "Restriction violated" errors are often expected (e.g., pausing on restricted devices)
+          if (errorData?.error?.reason === 'UNKNOWN' || errorData?.error?.message?.includes('Restriction violated')) {
+            console.warn(`Spotify restriction (non-fatal) for ${endpoint}:`, errorData.error.message);
+            return null; // Treat as success - the user's device may not support this action
+          }
+        } catch {
+          // Not JSON or different error structure, continue to throw
+        }
+      }
+      
       console.error(`Spotify API error for ${endpoint}:`, errorText);
       throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
     }
