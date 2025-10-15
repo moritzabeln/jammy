@@ -126,6 +126,10 @@ export class SpotifyService {
       await this.refreshAccessToken();
     }
 
+    console.log(`Making Spotify API request to ${endpoint}`);
+    console.log('Access token exists:', !!this.accessToken);
+    console.log('Access token (first 20 chars):', this.accessToken?.substring(0, 20));
+
     const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
       method,
       headers: {
@@ -135,7 +139,11 @@ export class SpotifyService {
       body: body ? JSON.stringify(body) : undefined,
     });
 
+    console.log(`Response status for ${endpoint}:`, response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Spotify API error for ${endpoint}:`, errorText);
       throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
     }
 

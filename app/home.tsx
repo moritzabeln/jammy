@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
     Pressable,
@@ -18,26 +19,43 @@ export default function HomeScreen() {
   const router = useRouter();
   const [sessions, setSessions] = useState<ListeningSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribe = FirebaseService.subscribeToActiveSessions((activeSessions) => {
-      setSessions(activeSessions);
-      setLoading(false);
-    });
+    try {
+      setError(null);
+      const unsubscribe = FirebaseService.subscribeToActiveSessions((activeSessions) => {
+        setSessions(activeSessions);
+        setLoading(false);
+      });
 
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load sessions';
+      setError(errorMessage);
+      setLoading(false);
+    }
   }, [user]);
 
   const handleCreateSession = async () => {
     if (!user) return;
 
     try {
+      setError(null);
       const sessionId = await FirebaseService.createSession(user.id, user.displayName);
       router.push(`/session/${sessionId}` as any);
     } catch (error) {
       console.error('Error creating session:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create session';
+      setError(errorMessage);
+      Alert.alert(
+        'Error Creating Session',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -129,6 +147,12 @@ export default function HomeScreen() {
 
       <Text style={styles.sectionTitle}>Active Sessions</Text>
 
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>⚠️ {error}</Text>
+        </View>
+      )}
+
       {sessions.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>No active sessions</Text>
@@ -209,6 +233,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginHorizontal: 20,
     marginBottom: 15,
+  },
+  errorContainer: {
+    marginHorizontal: 20,
+    marginBottom: 15,
+    backgroundColor: '#ff4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
   },
   sessionList: {
     paddingHorizontal: 20,
