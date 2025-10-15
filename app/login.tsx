@@ -9,6 +9,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [processedCode, setProcessedCode] = useState<string | null>(null);
   
   const [request, response, promptAsync] = useAuthRequest(
     SpotifyService.getAuthConfig(),
@@ -16,6 +17,14 @@ export default function LoginScreen() {
   );
 
   const exchangeCodeForToken = useCallback(async (code: string) => {
+    // Prevent processing the same code twice
+    if (processedCode === code) {
+      console.log('⚠️ Code already processed, skipping:', code);
+      return;
+    }
+
+    console.log('🔄 Processing new code:', code);
+    setProcessedCode(code);
     setIsLoading(true);
     setError(null);
     
@@ -75,14 +84,19 @@ export default function LoginScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [request, signIn]);
+  }, [request, signIn, processedCode]);
 
   useEffect(() => {
     if (response?.type === 'success') {
       const { code } = response.params;
+      console.log('🔵 useEffect triggered - response type:', response.type);
+      console.log('📝 Code from response:', code);
       exchangeCodeForToken(code);
+    } else if (response?.type === 'error') {
+      console.log('❌ Auth response error:', response.error);
     }
-  }, [response, exchangeCodeForToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
 
   useEffect(() => {
     if (user) {
@@ -93,6 +107,7 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     try {
       setError(null);
+      setProcessedCode(null); // Reset processed code when starting new login
       await promptAsync();
     } catch (error) {
       console.error('Error prompting login:', error);

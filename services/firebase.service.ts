@@ -1,6 +1,6 @@
-import { get, off, onValue, push, ref, set, update } from 'firebase/database';
+import { get, off, onValue, push, ref, remove, set, update } from 'firebase/database';
 import { database } from '../config/firebase';
-import { ListeningSession, PlaybackState, SpotifyTrack, User } from '../types';
+import { Friend, ListeningSession, PlaybackState, SpotifyTrack, User } from '../types';
 
 export class FirebaseService {
   // User Management
@@ -212,5 +212,244 @@ export class FirebaseService {
     if (!snapshot.exists()) return [];
 
     return Object.keys(snapshot.val());
+  }
+
+  // Generate a shareable friend link code
+  static async generateFriendLink(userId: string): Promise<string> {
+    console.log('🔵 FirebaseService.generateFriendLink called with userId:', userId);
+    
+    const linkCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    console.log('🔑 Generated link code:', linkCode);
+    
+    const linkRef = ref(database, `friendLinks/${linkCode}`);
+    console.log('📍 Database path:', `friendLinks/${linkCode}`);
+    
+    const linkData = {
+      userId,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+    
+    console.log('💾 Attempting to write link data:', linkData);
+    
+    try {
+      await set(linkRef, linkData);
+      console.log('✅ Friend link saved successfully to database');
+    } catch (error) {
+      console.error('❌ Error saving friend link to database:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: (error as any)?.code,
+      });
+      throw error;
+    }
+
+    console.log('🎉 Returning link code:', linkCode);
+    return linkCode;
+  }
+
+  // Accept a friend link and add the friend
+  static async acceptFriendLink(linkCode: string, currentUserId: string): Promise<{ success: boolean; friendId?: string; error?: string }> {
+    const linkRef = ref(database, `friendLinks/${linkCode}`);
+    const snapshot = await get(linkRef);
+
+    if (!snapshot.exists()) {
+      return { success: false, error: 'Invalid friend link' };
+    }
+
+    const linkData = snapshot.val();
+    
+    if (linkData.expiresAt < Date.now()) {
+      await remove(linkRef);
+      return { success: false, error: 'Friend link has expired' };
+    }
+
+    const friendId = linkData.userId;
+
+    if (friendId === currentUserId) {
+      return { success: false, error: 'Cannot add yourself as a friend' };
+    }
+
+    // Check if already friends
+    const existingFriendRef = ref(database, `users/${currentUserId}/friends/${friendId}`);
+    const existingSnapshot = await get(existingFriendRef);
+
+    if (existingSnapshot.exists()) {
+      return { success: false, error: 'Already friends with this user' };
+    }
+
+    // Add friend relationship
+    await this.addFriend(currentUserId, friendId);
+
+    return { success: true, friendId };
+  }
+
+  // Remove a friend
+  static async removeFriend(userId: string, friendId: string): Promise<void> {
+    const friendRef = ref(database, `users/${userId}/friends/${friendId}`);
+    await remove(friendRef);
+
+    const userFriendRef = ref(database, `users/${friendId}/friends/${userId}`);
+    await remove(userFriendRef);
+  }
+
+  // Get detailed friend information
+  static async getFriendDetails(userId: string): Promise<Friend[]> {
+    const friendIds = await this.getFriends(userId);
+    const friends: Friend[] = [];
+
+    for (const friendId of friendIds) {
+      const userRef = ref(database, `users/${friendId}`);
+      const snapshot = await get(userRef);
+
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        
+        // Get friend's current track if they have an active session
+        let currentTrack: SpotifyTrack | undefined;
+        let playbackState: PlaybackState | undefined;
+        
+        if (userData.autoSessionId) {
+          const sessionRef = ref(database, `sessions/${userData.autoSessionId}`);
+          const sessionSnapshot = await get(sessionRef);
+          
+          if (sessionSnapshot.exists()) {
+            const sessionData = sessionSnapshot.val();
+            currentTrack = sessionData.currentTrack;
+            playbackState = sessionData.playbackState;
+          }
+        }
+
+        friends.push({
+          id: friendId,
+          displayName: userData.displayName,
+          profileImage: userData.profileImage,
+          isOnline: userData.isOnline || false,
+          currentSessionId: userData.currentSessionId,
+          autoSessionId: userData.autoSessionId,
+          currentTrack,
+          playbackState,
+        });
+      }
+    }
+
+    return friends;
+  }
+
+  // Subscribe to friends list updates
+  static subscribeToFriends(
+    userId: string,
+    callback: (friends: Friend[]) => void
+  ): () => void {
+    const friendsRef = ref(database, `users/${userId}/friends`);
+    
+    const updateFriends = async () => {
+      const friends = await this.getFriendDetails(userId);
+      callback(friends);
+    };
+
+    // Initial load
+    updateFriends();
+
+    // Listen to changes in friend list
+    onValue(friendsRef, () => {
+      updateFriends();
+    });
+
+    // Also listen to changes in users data (online status, sessions)
+    const usersRef = ref(database, 'users');
+    onValue(usersRef, () => {
+      updateFriends();
+    });
+
+    // Also listen to session changes
+    const sessionsRef = ref(database, 'sessions');
+    onValue(sessionsRef, () => {
+      updateFriends();
+    });
+
+    return () => {
+      off(friendsRef);
+      off(usersRef);
+      off(sessionsRef);
+    };
+  }
+
+  // Auto-session management (created when user opens app)
+  static async createAutoSession(userId: string, userName: string): Promise<string> {
+    // Check if user already has an auto session
+    const userRef = ref(database, `users/${userId}`);
+    const userSnapshot = await get(userRef);
+    
+    if (userSnapshot.exists()) {
+      const userData = userSnapshot.val();
+      if (userData.autoSessionId) {
+        // Check if session still exists and is active
+        const existingSessionRef = ref(database, `sessions/${userData.autoSessionId}`);
+        const existingSnapshot = await get(existingSessionRef);
+        
+        if (existingSnapshot.exists() && existingSnapshot.val().isActive) {
+          return userData.autoSessionId;
+        }
+      }
+    }
+
+    // Create new auto session
+    const sessionsRef = ref(database, 'sessions');
+    const newSessionRef = push(sessionsRef);
+    const sessionId = newSessionRef.key!;
+
+    const session: ListeningSession = {
+      id: sessionId,
+      hostId: userId,
+      hostName: userName,
+      createdAt: Date.now(),
+      isActive: true,
+      participants: [userId],
+    };
+
+    await set(newSessionRef, session);
+    
+    // Update user's auto session ID
+    await update(userRef, {
+      autoSessionId: sessionId,
+      currentSessionId: sessionId,
+    });
+
+    return sessionId;
+  }
+
+  // Clean up auto session when user closes app
+  static async cleanupAutoSession(userId: string): Promise<void> {
+    const userRef = ref(database, `users/${userId}`);
+    const snapshot = await get(userRef);
+
+    if (!snapshot.exists()) return;
+
+    const userData = snapshot.val();
+    if (!userData.autoSessionId) return;
+
+    const sessionRef = ref(database, `sessions/${userData.autoSessionId}`);
+    const sessionSnapshot = await get(sessionRef);
+
+    if (sessionSnapshot.exists()) {
+      const session = sessionSnapshot.val();
+      
+      // Only end session if user is the only participant
+      if (session.participants && session.participants.length === 1) {
+        await update(sessionRef, { isActive: false });
+      } else {
+        // Remove user from participants
+        const updatedParticipants = session.participants.filter((id: string) => id !== userId);
+        await update(sessionRef, { participants: updatedParticipants });
+      }
+    }
+
+    // Clear auto session reference
+    await update(userRef, {
+      autoSessionId: null,
+      currentSessionId: null,
+    });
   }
 }

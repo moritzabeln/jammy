@@ -37,6 +37,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loadUser();
   }, []);
 
+  // Auto-create session when user is loaded
+  useEffect(() => {
+    if (user) {
+      createAutoSessionForUser(user);
+    }
+  }, [user]);
+
+  const createAutoSessionForUser = async (userData: User) => {
+    try {
+      await FirebaseService.createAutoSession(userData.id, userData.displayName);
+    } catch (error) {
+      console.error('Error creating auto session:', error);
+    }
+  };
+
   const clearError = () => {
     setError(null);
   };
@@ -121,6 +136,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setError(null);
       if (user) {
+        await FirebaseService.cleanupAutoSession(user.id);
         await FirebaseService.updateUserPresence(user.id, false);
       }
       await SpotifyService.clearTokens();

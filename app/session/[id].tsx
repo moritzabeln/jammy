@@ -40,8 +40,8 @@ export default function SessionScreen() {
 
     // Subscribe to session updates
     const unsubscribe = FirebaseService.subscribeToSession(id, (updatedSession) => {
-      if (!updatedSession) {
-        Alert.alert('Session Ended', 'This session has been ended by the host.');
+      if (!updatedSession || !updatedSession.isActive) {
+        Alert.alert('Session Unavailable', 'This session is no longer available.');
         router.back();
         return;
       }

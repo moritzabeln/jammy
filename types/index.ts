@@ -7,6 +7,10 @@ export interface User {
   accessToken?: string;
   refreshToken?: string;
   tokenExpiresAt?: number;
+  isOnline?: boolean;
+  lastSeen?: number;
+  currentSessionId?: string;
+  autoSessionId?: string; // Automatically created session when user opens app
 }
 
 export interface ListeningSession {
@@ -45,6 +49,19 @@ export interface Friend {
   profileImage?: string;
   isOnline: boolean;
   currentSessionId?: string;
+  autoSessionId?: string; // Friend's auto-created session
+  currentTrack?: SpotifyTrack;
+  playbackState?: PlaybackState;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromUserImage?: string;
+  toUserId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: number;
 }
 
 export interface SessionUpdate {
