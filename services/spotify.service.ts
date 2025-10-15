@@ -163,12 +163,31 @@ export class SpotifyService {
       throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
     }
 
-    // Some endpoints return 204 No Content
+    // Some endpoints return 204 No Content or 200 with empty body
     if (response.status === 204) {
       return null;
     }
 
-    return response.json();
+    // Check content-type header
+    const contentType = response.headers.get('content-type');
+    
+    // If no content-type or not JSON, treat as empty response
+    if (!contentType || !contentType.includes('application/json')) {
+      return null;
+    }
+
+    // Check if there's actually content to parse
+    const text = await response.text();
+    if (!text || text.trim().length === 0) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Non-JSON response from Spotify API - treat as success with no data
+      return null;
+    }
   }
 
   // User Profile
