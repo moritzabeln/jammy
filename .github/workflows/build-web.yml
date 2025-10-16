@@ -1,0 +1,47 @@
+name: Build Expo Web
+
+on:
+  push:
+    branches:
+      - build-web
+  workflow_dispatch:
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Expo CLI is installed
+        run: npx expo --version
+
+      - name: Prebuild (sync native code & configs)
+        run: npx expo prebuild
+
+      - name: Build web (static export)
+        run: npx expo export:web
+
+      - name: Upload web-build as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: web-build/
