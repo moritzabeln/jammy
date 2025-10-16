@@ -51,8 +51,8 @@ jobs:
       - name: Prebuild (sync native code & configs)
         run: npx expo prebuild
 
-      - name: Build web (Vite)
-        run: npx expo build:web
+      - name: Export static web build
+        run: npx expo export --platform web
 
       - name: Upload dist as artifact
         uses: actions/upload-artifact@v4
